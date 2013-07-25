@@ -14,7 +14,7 @@
 
 // There should be on reason to have a larger buffer
 // than what is enough for one MAVLink message.
-#define DEFAULT_BUFFER_SIZE 256
+#define DEFAULT_BUFFER_SIZE 1024
 #define DEFAULT_PORT 14550
 #define DEFAULT_BAUD 57600
 
@@ -35,21 +35,22 @@ bool interpretMAVLink;
 
 typedef struct {
 	LinkType linkType;
-	struct sockaddr_in remoteAddr;
 	in_addr_t remoteIP;
+	struct sockaddr_in remoteAddr;
+	struct sockaddr_in localAddr;
 	int remotePort;
+	int handle;
+
+	uint8_t inBuffer[DEFAULT_BUFFER_SIZE];
+	uint8_t outBuffer[DEFAULT_BUFFER_SIZE];
+
 } Remote;
 
-Remote mavlinkRemote;
+Remote mavlinkRemote[4];
+int numberOfRemotes;
+
+// Text messages. Is pretty pointless if MAVProxy is run on-board, as MAVProxy will do the same.
 Remote textRemote;
-
-size_t bufferSize = DEFAULT_BUFFER_SIZE;
-
-uint8_t* serialToIPBuffer;
-int serialToIPBufferCnt;
-
-uint8_t* IPToSerialBuffer;
-int IPToSerialBufferCnt;
 
 static void bail(const char *on_what) {
 	fputs(strerror(errno), stderr);
@@ -80,60 +81,44 @@ static void openSerialConnection(char* name, speed_t baudRate) {
 	tcsetattr(serialHandle, TCSANOW, &options);
 }
 
-static void openUDPSocket(struct sockaddr_in* networkAddress, int* handle) {
-	if (remoteAddr->sin_addr.s_addr == INADDR_NONE)
+static void openUDPSocket(Remote* remote) {
+	if (remote->remoteIP == INADDR_NONE)
 		bail("bad server address.");
 
-	struct sockaddr_in localAddr;
+	remote->localAddr.sin_family = AF_INET;
 
-	localAddr.sin_family = AF_INET;
-	// Maybe add a possibility to specify the interface to use via this.
-	localAddr.sin_addr.s_addr = INADDR_ANY;
-	localAddr.sin_port = htons(0);
+	// Maybe add a possibility to specify the interface to use via this. We just pick
+	// whichever one now.
+	remote->localAddr.sin_addr = INADDR_ANY;
+	remote->localAddr.sin_port = htons(0);
 
-	*handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	remote->handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-	if (*handle <= 0)
+	if (remote->handle <= 0)
 		bail("failed to create socket\n");
 
 	// We are lazy and stupid and use a single thread.
 	int nonBlocking = 1;
-	if (fcntl(*handle, F_SETFL, O_NONBLOCK, nonBlocking) == -1) {
+	if (fcntl(remote->handle, F_SETFL, O_NONBLOCK, nonBlocking) == -1) {
 		bail("failed to set non-blocking socket\n");
 	}
 
 	// We bind to any port.
-	if (bind(*handle, (struct sockaddr*) &localAddr, sizeof(struct sockaddr_in)) < 0) {
+	if (bind(remote->handle, (struct sockaddr*) remote->localAddr, sizeof(struct sockaddr_in)) < 0) {
 		bail("bind failed\n");
 		abort();
 	}
 }
 
-static void openSocket(char* remoteHostname, int remotePort) {
-	if (mavlinkIPLink != NONE) {
-		remotePort = remotePort;
-		remoteAddr.sin_port = htons(remotePort);
-		remoteAddr.sin_addr.s_addr = remoteIP = inet_addr(remoteHostname);
-		remoteAddr.sin_family = AF_INET;
+static void openTCPSocket(Remote* remote) {
 
-		if (mavlinkIPLink == UDP) {
-			openUDPSocket();
-		}
-
-		else if (mavlinkIPLink == TCP) {
-			bail("TCP not yet implemented.");
-		}
-	}
 }
 
-void initMAVLinkSocket(char* remoteHostname, int _remotePort) {
-	openSocket
-}
-
-void allocBuffer() {
-	buffer = malloc(bufferSize);
-	if (buffer == NULL)
-		complain;
+static void openSocket(Remote* remote) {
+	if (remote->linkType == UDP)
+		openUDPSocket(remote);
+	else if (remote->linkType == TCP)
+		openTCPSocket(remote);
 }
 
 void receiveByte(uint8_t data) {
