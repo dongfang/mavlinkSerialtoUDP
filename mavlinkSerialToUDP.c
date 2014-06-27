@@ -11,6 +11,11 @@
 #include <signal.h>
 #include <termios.h>
 #include <errno.h>
+#include <getopt.h>
+
+typedef uint8_t bool;
+#define true 1
+#define false 0
 
 // There should be on reason to have a larger buffer
 // than what is enough for one MAVLink message.
@@ -47,7 +52,7 @@ typedef struct {
 } Remote;
 
 Remote mavlinkRemote[4];
-int numberOfRemotes;
+int remoteCount;
 
 // Text messages. Is pretty pointless if MAVProxy is run on-board, as MAVProxy will do the same.
 Remote textRemote;
@@ -121,6 +126,10 @@ static void openSocket(Remote* remote) {
 		openTCPSocket(remote);
 }
 
+static void resolve(Remote* remote, char* hostname) {
+	remote->remoteAddr.sin_addr.s_addr = inet_addr(hostname);
+}
+
 void receiveByte(uint8_t data) {
 }
 
@@ -132,4 +141,78 @@ bool shouldSendImmediately() {
 
 void mavlinkThread() {
 
+}
+
+void parsePort(char* arg) {
+  printf("Port is : %s\n", arg);
+}
+
+void parseRemote(char* arg) {
+  printf("Remote is : %s\n", arg);
+}
+
+bool isMAVLink = false;
+bool doesLogging = false;
+char port[100];
+int baudrate = 57600;
+
+static bool parseArgs(int argc, char** argv) {
+  bool didGetPort = false;
+  bool didGetRemote = false;
+  int c;
+
+  struct option longopts[] = {
+    (struct option){.name="port", .has_arg=1, .flag=NULL, .val=200},
+    (struct option){.name="remote", .has_arg=1, .flag=NULL, .val=201},
+    (struct option){.name="baudrate", .has_arg=1, .flag=NULL, .val=202},
+    (struct option){.name="mavlink", .has_arg=0, .flag=NULL, .val=203},
+    (struct option){.name="debug", .has_arg=1, .flag=NULL, .val=204},
+    (struct option){.name=NULL, .has_arg=0, .flag=NULL, .val=0}
+  };
+
+  while ((c = getopt_long(argc, argv, "p:r:mdb:", longopts, NULL)) != -1) {
+    switch (c)
+      {
+      case 'p':
+      case 200:
+	strcpy(port, optarg);
+	didGetPort = true;
+	break;
+      case 'b':
+      case 202:
+	baudrate = atoi(optarg);
+      case 'r':
+      case 201:
+	parseRemote(optarg);
+	didGetRemote = true;
+	break;
+      case 'm':
+      case 203:
+	isMAVLink = true;
+	break;
+      case 'd':
+      case 204:
+	doesLogging = true;
+	break;
+	/*
+if (optopt == 'c')
+	  fprintf (stderr, "Option -%c requires an argument.\n", optopt);
+	else if (isprint (optopt))
+	  fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+	else
+	  fprintf (stderr,
+		   "Unknown option character `\\x%x'.\n",
+		   optopt);
+	return 1;
+	*/
+      default:
+	abort ();
+      }
+  }
+
+  if (!didGetPort)
+	  bail("You must specify a serial port with -p");
+}
+
+int main(int argc, char** argv) {
 }

@@ -1,0 +1,24 @@
+A is possibly behind T1 and has public IP I1
+B is possibly behind T2 and has public IP I2
+S is globally known 
+
+
+Works if NAT xlation of UDP ports is not on a per host basis.
+
+A finds a local source port P1
+B finds a local source port P2
+
+A sends UDP message to S containing P1 from P1
+S receives a message from I1:Q1 containing P1 
+
+B sends UDP message to S containing P2 from P2
+S receives a message from I2:Q2 containing P2 
+
+S sends a UDP message to I2:Q2 containing I1:Q1
+S sends a UDP message to I1:Q1 containing I2:Q2
+
+A now sends to I2:Q2 from P1
+B now sends to I1:Q1 from P2
+
+
+On a per host basis: Ouch. No immediate solution.
